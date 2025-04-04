@@ -1,8 +1,10 @@
+// Firebase servislerini başlatmak için gerekli fonksiyonları import ediyoruz.
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
-// Firebase yapılandırması (dotenv değişkenleri ile güvenli)
+// Firebase yapılandırma bilgileri .env dosyasından okunur (güvenlik için sabit yazmıyoruz)
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -10,16 +12,13 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 // Firebase uygulamasını başlat
 const app = initializeApp(firebaseConfig);
 
-// Firebase servislerini başlat
+// Firebase servislerini dışa aktar
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app); // Firestore eklendi (ilerisi için)
-
-// Varsayılan olarak Firebase app'i dışa aktar
-export default app;
+export const db = getFirestore(app);        // Firestore
+export const storage = getStorage(app);     // Storage (dosya yükleme)
