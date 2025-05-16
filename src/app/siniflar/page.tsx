@@ -6,9 +6,8 @@ import { signOut, onAuthStateChanged, User } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Katil from "@/components/Katil"; // ✅ Katıl bileşenini ekledik
+import KatilPopup from "@/components/KatilPopup";
 
-// Firestore'daki sınıf verileri için tip tanımı
 interface Sinif {
   id: string;
   ad: string;
@@ -18,23 +17,22 @@ interface Sinif {
 export default function SiniflarSayfasi() {
   const [kullanici, setKullanici] = useState<User | null>(null);
   const [siniflar, setSiniflar] = useState<Sinif[]>([]);
+  const [popupAcik, setPopupAcik] = useState(false);
   const router = useRouter();
 
-  // Kullanıcının oturumunu kontrol et ve Firestore'dan sınıfları çek
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setKullanici(user);
         await siniflariGetir(user.uid);
       } else {
-        router.push("/"); // Giriş yapılmamışsa ana sayfaya yönlendir
+        router.push("/");
       }
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Firestore'dan kullanıcının kayıtlı olduğu sınıfları getir
   const siniflariGetir = async (uid: string) => {
     try {
       const sinifQuery = query(
@@ -54,7 +52,6 @@ export default function SiniflarSayfasi() {
     }
   };
 
-  // Çıkış yap ve ana sayfaya dön
   const cikisYap = async () => {
     await signOut(auth);
     router.push("/");
@@ -62,7 +59,7 @@ export default function SiniflarSayfasi() {
 
   return (
     <div className="min-h-screen p-8 bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white">
-      {/* Sağ üst köşede kullanıcı bilgileri */}
+      {/* Sağ üst kullanıcı bilgisi ve çıkış */}
       <div className="flex justify-end items-center gap-4 mb-6">
         {kullanici && (
           <>
@@ -82,14 +79,18 @@ export default function SiniflarSayfasi() {
         )}
       </div>
 
-      {/* Sınıfa Katılma Bileşeni */}
-      <div className="mb-8">
-        <Katil />
+      {/* Başlık ve katıl butonu */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Kayıtlı Olduğunuz Sınıflar</h1>
+        <button
+          onClick={() => setPopupAcik(true)}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+        >
+          + Sınıfa Katıl
+        </button>
       </div>
 
       {/* Sınıf listesi */}
-      <h1 className="text-3xl font-bold mb-6">Kayıtlı Olduğunuz Sınıflar</h1>
-
       {siniflar.length === 0 ? (
         <p className="text-sm text-gray-600 dark:text-gray-300">
           Herhangi bir sınıfa kayıtlı değilsiniz.
@@ -99,7 +100,7 @@ export default function SiniflarSayfasi() {
           {siniflar.map((sinif) => (
             <li key={sinif.id}>
               <Link
-                href={`/siniflar/${sinif.id}`}
+                href={/siniflar/${sinif.id}}
                 className="block p-4 bg-white dark:bg-gray-800 rounded shadow hover:bg-blue-50 dark:hover:bg-blue-900 transition"
               >
                 <h2 className="text-xl font-semibold">{sinif.ad}</h2>
@@ -111,6 +112,15 @@ export default function SiniflarSayfasi() {
           ))}
         </ul>
       )}
+
+      {/* Katıl Popup bileşeni */}
+      <KatilPopup
+        acik={popupAcik}
+        onKapat={() => setPopupAcik(false)}
+        onBasari={() => {
+          if (kullanici) siniflariGetir(kullanici.uid);
+        }}
+      />
     </div>
   );
 }
