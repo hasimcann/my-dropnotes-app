@@ -1,124 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { auth, db } from "@/config/firebaseConfig";
 import {
-  onAuthStateChanged,
-  User,
-  signOut,
-} from "firebase/auth";
-import {
   doc,
-  getDoc,
-  addDoc,
+  updateDoc,
+  arrayUnion,
   collection,
-  serverTimestamp,
+  query,
+  where,
+  getDocs,
 } from "firebase/firestore";
-import { useRouter } from "next/navigation";
 
-export default function SinifOlusturSayfasi() {
-  const [kullanici, setKullanici] = useState<User | null>(null);
-  const [rol, setRol] = useState<string | null>(null);
-  const [ad, setAd] = useState("");
+interface KatilPopupProps {
+  onClose: () => void;
+}
+
+export default function KatilPopup({ onClose }: KatilPopupProps) {
   const [kod, setKod] = useState("");
-  const [bilgi, setBilgi] = useState("");
+  const [mesaj, setMesaj] = useState("");
   const router = useRouter();
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setKullanici(user);
-        const docRef = doc(db, "kullanicilar", user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setRol(docSnap.data().rol);
-        }
-      } else {
-        router.push("/");
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const cikisYap = async () => {
-    await signOut(auth);
-    router.push("/");
-  };
-
-  const sinifOlustur = async () => {
-    if (!ad || !kod || !kullanici) return;
+  const sinifaKatil = async () => {
+    const kullanici = auth.currentUser;
+    if (!kullanici) return;
 
     try {
-      await addDoc(collection(db, "siniflar"), {
-        ad,
-        kod,
-        ogretmenUid: kullanici.uid,
-        uyeler: [kullanici.uid],
-        olusturmaTarihi: serverTimestamp(),
+      const sinifQuery = query(
+        collection(db, "siniflar"),
+        where("kod", "==", kod)
+      );
+      const snapshot = await getDocs(sinifQuery);
+
+      if (snapshot.empty) {
+        setMesaj("❌ Geçersiz sınıf kodu.");
+        return;
+      }
+
+      const sinifDoc = snapshot.docs[0];
+      const sinifRef = doc(db, "siniflar", sinifDoc.id);
+      const sinifData = sinifDoc.data();
+
+      if (sinifData.uyeler.includes(kullanici.uid)) {
+        setMesaj("ℹ️ Zaten bu sınıfa kayıtlısınız.");
+        return;
+      }
+
+      await updateDoc(sinifRef, {
+        uyeler: arrayUnion(kullanici.uid),
       });
 
-      setAd("");
-      setKod("");
-      setBilgi("✅ Sınıf başarıyla oluşturuldu.");
+      router.push(`/siniflar/${sinifDoc.id}`);
     } catch (error) {
-      console.error("Sınıf oluşturma hatası:", error);
-      setBilgi("❌ Bir hata oluştu. Lütfen tekrar deneyin.");
+      console.error("Sınıfa katılma hatası:", error);
+      setMesaj("❌ Bir hata oluştu. Lütfen tekrar deneyin.");
     }
   };
 
-  if (rol !== "ogretmen") {
-    return (
-      <div className="p-8">
-        <h1 className="text-2xl font-bold text-red-600">
-          Bu sayfaya erişiminiz yok.
-        </h1>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen p-8 bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white">
-      <div className="flex justify-end items-center gap-4 mb-6">
-        <span>{kullanici?.displayName}</span>
-        <img
-          src={kullanici?.photoURL ?? ""}
-          alt="Profil Foto"
-          className="w-8 h-8 rounded-full"
-        />
-        <button
-          onClick={cikisYap}
-          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-        >
-          Çıkış Yap
-        </button>
-      </div>
-
-      <h1 className="text-3xl font-bold mb-6">Yeni Sınıf Oluştur</h1>
-
-      <div className="space-y-4 max-w-md">
+    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-sm">
+        <h2 className="text-xl font-semibold mb-4 text-center">Sınıf Kodunu Girin</h2>
         <input
           type="text"
-          placeholder="Sınıf adı"
-          value={ad}
-          onChange={(e) => setAd(e.target.value)}
-          className="w-full px-4 py-2 border rounded"
-        />
-        <input
-          type="text"
-          placeholder="Sınıf kodu (benzersiz)"
+          placeholder="Sınıf kodu"
           value={kod}
           onChange={(e) => setKod(e.target.value)}
-          className="w-full px-4 py-2 border rounded"
+          className="w-full border rounded px-4 py-2 mb-4"
         />
-        <button
-          onClick={sinifOlustur}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-        >
-          Sınıf Oluştur
-        </button>
-
-        {bilgi && <p className="text-sm mt-2">{bilgi}</p>}
+        {mesaj && <p className="text-sm text-center text-red-600 mb-4">{mesaj}</p>}
+        <div className="flex justify-between">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded"
+          >
+            İptal
+          </button>
+          <button
+            onClick={sinifaKatil}
+            className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded"
+          >
+            Katıl
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,84 +1,88 @@
 "use client";
 
 import { useState } from "react";
-import { db } from "@/config/firebaseConfig";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "@/config/firebaseConfig";
+import {
+  addDoc,
+  collection,
+} from "firebase/firestore";
+import { useRouter } from "next/navigation";
 
 interface SinifOlusturPopupProps {
-  kullaniciUid: string;
-  onKapat: () => void;
-  onBasari: () => void;
-  acik: boolean;
+  onClose: () => void;
 }
 
-export default function SinifOlusturPopup({
-  kullaniciUid,
-  onKapat,
-  onBasari,
-  acik,
-}: SinifOlusturPopupProps) {
-  const [ad, setAd] = useState("");
-  const [kod, setKod] = useState("");
-  const [bilgi, setBilgi] = useState("");
+export default function SinifOlusturPopup({ onClose }: SinifOlusturPopupProps) {
+  const [sinifAdi, setSinifAdi] = useState("");
+  const [mesaj, setMesaj] = useState("");
+  const router = useRouter();
 
-  if (!acik) return null;
+  const kodUret = (): string => {
+    const harfler = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const rakamlar = "0123456789";
+    let kod = "";
+    for (let i = 0; i < 3; i++) kod += harfler.charAt(Math.floor(Math.random() * harfler.length));
+    for (let i = 0; i < 3; i++) kod += rakamlar.charAt(Math.floor(Math.random() * rakamlar.length));
+    return kod;
+  };
 
   const sinifOlustur = async () => {
-    if (!ad || !kod) return;
+    const kullanici = auth.currentUser;
+    if (!kullanici) return;
+
+    if (!sinifAdi.trim()) {
+      setMesaj("❗ Sınıf adı boş olamaz.");
+      return;
+    }
 
     try {
-      await addDoc(collection(db, "siniflar"), {
-        ad,
-        kod,
-        ogretmenUid: kullaniciUid,
-        uyeler: [kullaniciUid],
-        olusturmaTarihi: serverTimestamp(),
+      const yeniKod = kodUret();
+
+      // Firestore'a sınıfı ekle ve ID'yi al
+      const docRef = await addDoc(collection(db, "siniflar"), {
+        ad: sinifAdi,
+        kod: yeniKod,
+        uyeler: [kullanici.uid],
       });
 
-      setAd("");
-      setKod("");
-      setBilgi("✅ Sınıf başarıyla oluşturuldu.");
-      onBasari();
-      onKapat();
+      // Popup'u kapat ve yönlendir
+      onClose();
+      router.push(`/siniflar/${docRef.id}`);
     } catch (error) {
       console.error("Sınıf oluşturma hatası:", error);
-      setBilgi("❌ Hata oluştu.");
+      setMesaj("❌ Bir hata oluştu. Lütfen tekrar deneyin.");
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white dark:bg-gray-800 p-6 rounded shadow w-96">
-        <h2 className="text-xl font-bold mb-4">Yeni Sınıf Oluştur</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded shadow-lg w-full max-w-sm">
+        <h2 className="text-xl font-bold mb-4 text-center">Yeni Sınıf Oluştur</h2>
+
         <input
           type="text"
           placeholder="Sınıf adı"
-          value={ad}
-          onChange={(e) => setAd(e.target.value)}
-          className="w-full px-3 py-2 border rounded mb-2"
+          value={sinifAdi}
+          onChange={(e) => setSinifAdi(e.target.value)}
+          className="w-full px-4 py-2 border rounded mb-4"
         />
-        <input
-          type="text"
-          placeholder="Sınıf kodu (benzersiz)"
-          value={kod}
-          onChange={(e) => setKod(e.target.value)}
-          className="w-full px-3 py-2 border rounded mb-4"
-        />
-        <div className="flex justify-end gap-2">
+
+        {mesaj && <p className="text-sm text-center text-red-600 mb-4">{mesaj}</p>}
+
+        <div className="flex justify-between">
           <button
-            onClick={onKapat}
-            className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded"
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-300 dark:bg-gray-700 text-black dark:text-white rounded"
           >
             İptal
           </button>
           <button
             onClick={sinifOlustur}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
           >
             Oluştur
           </button>
         </div>
-        {bilgi && <p className="text-sm mt-2">{bilgi}</p>}
       </div>
     </div>
   );
