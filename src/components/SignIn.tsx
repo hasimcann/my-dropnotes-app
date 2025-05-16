@@ -20,7 +20,6 @@ const SignIn = () => {
       if (currentUser) {
         setUser(currentUser);
         await kullaniciyiFirestoreaKaydet(currentUser);
-        router.push("/siniflar");
       } else {
         setUser(null);
       }
@@ -29,38 +28,42 @@ const SignIn = () => {
     return () => unsubscribe();
   }, []);
 
-  // ✅ Kullanıcıyı Firestore'a kaydet (zaten varsa tekrar yazmaz)
+  // ✅ Kullanıcıyı Firestore'a kaydet ve yönlendir
   const kullaniciyiFirestoreaKaydet = async (user: User) => {
     try {
       const userRef = doc(db, "kullanicilar", user.uid);
       const docSnap = await getDoc(userRef);
-  
+
       if (!docSnap.exists()) {
+        // Yeni kullanıcı: Firestore'a kaydet ve rol seçimine yönlendir
         await setDoc(userRef, {
           uid: user.uid,
           ad: user.displayName ?? "İsimsiz",
           eposta: user.email ?? "Bilinmiyor",
           foto: user.photoURL ?? "",
           kayitTarihi: new Date().toISOString(),
-          rol: "ogrenci", // ⭐ Varsayılan rol atanıyor
+          rol: "", // 👈 Rol henüz belirlenmedi
         });
-        console.log("✅ Kullanıcı Firestore'a kaydedildi.");
+        console.log("✅ Yeni kullanıcı Firestore'a kaydedildi.");
+        router.push("/rol-sec");
       } else {
-        console.log("ℹ️ Kullanıcı zaten kayıtlı.");
+        const veri = docSnap.data();
+        if (!veri.rol) {
+          router.push("/rol-sec");
+        } else {
+          router.push("/siniflar");
+        }
       }
     } catch (error) {
       console.error("❌ Firestore kayıt hatası:", error);
     }
   };
-  
-  
 
   const googleIleGirisYap = async () => {
     try {
       const sonuc = await signInWithPopup(auth, googleProvider);
       setUser(sonuc.user);
-      await kullaniciyiFirestoreaKaydet(sonuc.user);
-      router.push("/siniflar");
+      await kullaniciyiFirestoreaKaydet(sonuc.user); // tekrar kontrol edilir
     } catch (error) {
       console.error("Google ile giriş hatası:", error);
     }
