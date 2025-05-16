@@ -9,16 +9,18 @@ import {
 import { auth, googleProvider, db } from "@/config/firebaseConfig";
 import { useEffect, useState } from "react";
 import { doc, setDoc, getDoc } from "firebase/firestore";
+import { useRouter } from "next/navigation";
 
 const SignIn = () => {
   const [user, setUser] = useState<User | null>(null);
+  const router = useRouter();
 
-  // ✅ Oturum açık mı kontrol et
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
-        await kullaniciyiFirestoreaKaydet(currentUser); // Otomatik kayıt
+        await kullaniciyiFirestoreaKaydet(currentUser);
+        router.push("/siniflar");
       } else {
         setUser(null);
       }
@@ -32,7 +34,7 @@ const SignIn = () => {
     try {
       const userRef = doc(db, "kullanicilar", user.uid);
       const docSnap = await getDoc(userRef);
-
+  
       if (!docSnap.exists()) {
         await setDoc(userRef, {
           uid: user.uid,
@@ -40,6 +42,7 @@ const SignIn = () => {
           eposta: user.email ?? "Bilinmiyor",
           foto: user.photoURL ?? "",
           kayitTarihi: new Date().toISOString(),
+          rol: "ogrenci", // ⭐ Varsayılan rol atanıyor
         });
         console.log("✅ Kullanıcı Firestore'a kaydedildi.");
       } else {
@@ -49,12 +52,15 @@ const SignIn = () => {
       console.error("❌ Firestore kayıt hatası:", error);
     }
   };
+  
+  
 
   const googleIleGirisYap = async () => {
     try {
       const sonuc = await signInWithPopup(auth, googleProvider);
       setUser(sonuc.user);
-      await kullaniciyiFirestoreaKaydet(sonuc.user); // Giriş sonrası manuel kayıt
+      await kullaniciyiFirestoreaKaydet(sonuc.user);
+      router.push("/siniflar");
     } catch (error) {
       console.error("Google ile giriş hatası:", error);
     }

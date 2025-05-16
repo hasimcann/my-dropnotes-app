@@ -10,6 +10,7 @@ import {
   getDocs,
   doc,
   updateDoc,
+  arrayUnion,
 } from "firebase/firestore";
 
 const Katil = () => {
@@ -21,7 +22,6 @@ const Katil = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setKullanici(user);
-      console.log("🟢 Katil bileşeni - kullanıcı:", user); // << BU LOG GÖRÜNÜYOR MU?
     });
     return () => unsubscribe();
   }, []);
@@ -42,11 +42,10 @@ const Katil = () => {
       }
 
       const sinifDoc = querySnapshot.docs[0];
-      const sinifId = sinifDoc.id;
+      const sinifRef = doc(db, "siniflar", sinifDoc.id);
 
-      const kullaniciRef = doc(db, "kullanicilar", kullanici.uid);
-      await updateDoc(kullaniciRef, {
-        sinifId: sinifId,
+      await updateDoc(sinifRef, {
+        uyeler: arrayUnion(kullanici.uid),
       });
 
       setBilgi("✅ Sınıfa başarıyla katıldınız.");
@@ -59,7 +58,6 @@ const Katil = () => {
   return (
     <div className="flex flex-col items-center gap-4 p-6 bg-white dark:bg-gray-800 rounded shadow-md max-w-md mx-auto mt-10">
       <h2 className="text-xl font-bold text-center">Sınıfa Katıl</h2>
-      <p className="text-sm text-gray-400">Katil bileşeni aktif!</p> {/* 🧪 */}
       <input
         type="text"
         placeholder="Sınıf kodunu girin"
