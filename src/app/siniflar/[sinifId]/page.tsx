@@ -184,36 +184,25 @@ export default function SinifDetaySayfasi() {
   setOzetMetni("");
 
   try {
-    let body: any = {};
-
-    // Eğer sadece mesaj varsa
-    if (icerik.mesaj && !icerik.dosyaURL) {
-      body = { icerik: icerik.mesaj };
-    }
-    // Eğer dosya varsa
-    else if (icerik.dosyaURL && icerik.dosyaTipi) {
-      body = { url: icerik.dosyaURL, mimeType: icerik.dosyaTipi };
-    } else {
-      setOzetMetni("Bu içerik özetlenemez.");
-      setOzetYukleniyor(false);
-      return;
-    }
-
     const res = await fetch("/api/ozetle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        url: icerik.dosyaURL,
+        mimeType: icerik.dosyaTipi,
+      }),
     });
 
     const data = await res.json();
-    setOzetMetni(data.ozet || data.error || "Özet oluşturulamadı.");
+    setOzetMetni(data.ozet || "Özetleme başarısız.");
   } catch (e) {
-    console.error(e);
+    console.error("Özetleme hatası:", e);
     setOzetMetni("Bir hata oluştu.");
   } finally {
     setOzetYukleniyor(false);
   }
 };
+
 
   /* --------- Dosya Ekle --------- */
   const handleIcerikEkle = async () => {
