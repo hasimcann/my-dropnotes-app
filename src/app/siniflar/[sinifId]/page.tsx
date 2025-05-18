@@ -22,7 +22,6 @@ import {
 import { onAuthStateChanged, User } from "firebase/auth";
 import { v4 as uuidv4 } from "uuid";
 
-/* --------- Tip Tanımları --------- */
 interface Icerik {
   id: string;
   mesaj: string;
@@ -41,7 +40,6 @@ interface Yorum {
   tarih: Timestamp;
 }
 
-/* --------- Modal Bileşeni --------- */
 function OzetModal({
   acik,
   ozet,
@@ -85,7 +83,6 @@ export default function SinifDetaySayfasi() {
   const params = useParams();
   const sinifId = params?.sinifId as string;
 
-  /* --------- State’ler --------- */
   const [kullanici, setKullanici] = useState<User | null>(null);
   const [rol, setRol] = useState<string | null>(null);
   const [sinifAdi, setSinifAdi] = useState("");
@@ -98,12 +95,10 @@ export default function SinifDetaySayfasi() {
   const [yorumlar, setYorumlar] = useState<Record<string, Yorum[]>>({});
   const [yeniYorum, setYeniYorum] = useState<Record<string, string>>({});
   const [acikMenu, setAcikMenu] = useState<Record<string, boolean>>({});
-  /* Özetleme ile ilgili */
   const [ozetModalAcik, setOzetModalAcik] = useState(false);
   const [ozetYukleniyor, setOzetYukleniyor] = useState(false);
   const [ozetMetni, setOzetMetni] = useState("");
 
-  /* --------- useEffect --------- */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (u) {
@@ -116,7 +111,6 @@ export default function SinifDetaySayfasi() {
     return () => unsubscribe();
   }, []);
 
-  /* --------- Yardımcı Fonksiyonlar --------- */
   const getKullaniciRol = async (uid: string) => {
     const q = query(collection(db, "kullanicilar"), where("uid", "==", uid));
     const snap = await getDocs(q);
@@ -137,7 +131,7 @@ export default function SinifDetaySayfasi() {
     const snap = await getDocs(ref);
     const list = snap.docs
       .map((d) => ({ id: d.id, ...d.data() } as Icerik))
-      .sort((a, b) => b.tarih.toMillis() - a.tarih.toMillis()); // en yeni üstte
+      .sort((a, b) => b.tarih.toMillis() - a.tarih.toMillis());
     setIcerikler(list);
     for (const d of snap.docs) await yorumlariGetir(d.id);
   };
@@ -177,61 +171,68 @@ export default function SinifDetaySayfasi() {
     await yorumlariGetir(icerikId);
   };
 
-  /* --------- Özetleme --------- */
-  const ozetle = async (icerik: Icerik) => {
-  setOzetModalAcik(true);
-  setOzetYukleniyor(true);
-  setOzetMetni("");
+  const ozetAl = async (icerik: Icerik) => {
+    setOzetModalAcik(true);
+    setOzetYukleniyor(true);
+    setOzetMetni("");
+    const body: any = {
+      icerik: icerik.mesaj || "",
+      url: icerik.dosyaURL || null,
+      mimeType: icerik.dosyaTipi || null,
+    };
+    try {
+      const response = await fetch("/api/ozetle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setOzetMetni(data.ozet);
+      } else {
+        setOzetMetni("Özetleme başarısız.");
+      }
+    } catch (e) {
+      setOzetMetni("Sunucuya ulaşılamadı.");
+    } finally {
+      setOzetYukleniyor(false);
+    }
+  };
 
-  try {
-    const res = await fetch("/api/ozetle", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: icerik.dosyaURL,
-        mimeType: icerik.dosyaTipi,
-      }),
-    });
-
-    const data = await res.json();
-    setOzetMetni(data.ozet || "Özetleme başarısız.");
-  } catch (e) {
-    console.error("Özetleme hatası:", e);
-    setOzetMetni("Bir hata oluştu.");
-  } finally {
-    setOzetYukleniyor(false);
-  }
-};
-
-
-  /* --------- Dosya Ekle --------- */
   const handleIcerikEkle = async () => {
     if (!kullanici || (!mesaj.trim() && !dosya)) return;
     if (icerikler.some((i) => i.dosyaAdi === dosya?.name && i.yukleyenUID === kullanici.uid)) {
-      alert("Bu dosyayı zaten yüklediniz."); return;
+      alert("Bu dosyayı zaten yüklediniz.");
+      return;
     }
     let url = "", tip = "";
     if (dosya) {
       const r = ref(storage, `siniflar/${sinifId}/${uuidv4()}_${dosya.name}`);
       const up = uploadBytesResumable(r, dosya);
       up.on("state_changed", (s) => setProgress((s.bytesTransferred / s.totalBytes) * 100));
-      await up; url = await getDownloadURL(r); tip = dosya.type;
+      await up;
+      url = await getDownloadURL(r);
+      tip = dosya.type;
     }
     await addDoc(collection(db, "siniflar", sinifId, "icerikler"), {
-      mesaj, dosyaURL: url, dosyaAdi, dosyaTipi: tip,
+      mesaj,
+      dosyaURL: url,
+      dosyaAdi,
+      dosyaTipi: tip,
       yukleyenUID: kullanici!.uid,
       yukleyenAd: kullanici!.displayName || kullanici!.email,
       tarih: Timestamp.now(),
     });
-    setMesaj(""); setDosya(null); setDosyaAdi(""); setProgress(0);
+    setMesaj("");
+    setDosya(null);
+    setDosyaAdi("");
+    setProgress(0);
     await icerikleriGetir();
   };
 
-  /* --------- JSX --------- */
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
       <div className="max-w-4xl mx-auto">
-        {/* Başlık */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-blue-700">{sinifAdi}</h1>
           <p className="text-sm text-gray-600 mt-1">
@@ -239,7 +240,6 @@ export default function SinifDetaySayfasi() {
           </p>
         </div>
 
-        {/* Dosya & Mesaj Ekle */}
         <div className="bg-white p-6 rounded shadow mb-10">
           <h2 className="text-xl font-semibold mb-4">Yeni Not veya Dosya Ekle</h2>
           <textarea
@@ -256,7 +256,9 @@ export default function SinifDetaySayfasi() {
                 type="file"
                 onChange={(e) => {
                   const f = e.target.files?.[0] || null;
-                  setDosya(f); setDosyaAdi(f?.name || ""); e.target.value = "";
+                  setDosya(f);
+                  setDosyaAdi(f?.name || "");
+                  e.target.value = "";
                 }}
                 className="hidden"
               />
@@ -278,16 +280,12 @@ export default function SinifDetaySayfasi() {
           </div>
         </div>
 
-        {/* İçerik Listesi */}
         <div className="grid grid-cols-1 gap-4 max-w-4xl mx-auto">
           {icerikler.map((ic) => (
             <div key={ic.id} className="bg-white p-4 rounded shadow">
-              {/* Üst Bilgi */}
               <div className="mb-2 text-sm text-gray-500">
                 {ic.yukleyenAd} ‒ {ic.tarih.toDate().toLocaleString()}
               </div>
-
-              {/* Mesaj / Dosya */}
               {ic.mesaj && <p className="mb-2">{ic.mesaj}</p>}
               {ic.dosyaURL && ic.dosyaTipi?.startsWith("image") && (
                 <img src={ic.dosyaURL} alt="Dosya" className="mb-2 rounded" />
@@ -298,13 +296,9 @@ export default function SinifDetaySayfasi() {
               {ic.dosyaURL && !ic.dosyaTipi?.startsWith("image") && !ic.dosyaTipi?.startsWith("video") && (
                 <a href={ic.dosyaURL} target="_blank" className="text-blue-600 underline">📎 {ic.dosyaAdi}</a>
               )}
-
-              {/* Özetle Butonu */}
-              <button onClick={() => ozetle(ic)} className="mt-2 text-sm text-blue-600 underline hover:text-blue-800">
+              <button onClick={() => ozetAl(ic)} className="mt-2 text-sm text-blue-600 underline hover:text-blue-800">
                 📄 Özetle
               </button>
-
-              {/* Sil Menüsü */}
               {(kullanici?.uid === ic.yukleyenUID || rol === "ogretmen") && (
                 <div className="relative inline-block text-left float-right">
                   <button onClick={() => setAcikMenu((p) => ({ ...p, [ic.id]: !p[ic.id] }))}>⋮</button>
@@ -320,8 +314,6 @@ export default function SinifDetaySayfasi() {
                   )}
                 </div>
               )}
-
-              {/* Yorumlar */}
               <div className="mt-4">
                 <h4 className="text-sm font-semibold">Yorumlar:</h4>
                 <div className="space-y-1 text-sm text-gray-700">
@@ -350,8 +342,6 @@ export default function SinifDetaySayfasi() {
           ))}
         </div>
       </div>
-
-      {/* Özet Modalı */}
       <OzetModal
         acik={ozetModalAcik}
         yukleniyor={ozetYukleniyor}
