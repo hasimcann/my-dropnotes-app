@@ -508,7 +508,6 @@ export default function SinifDetaySayfasi() {
 
 
               {/* 📄 Özetle Butonu yorumların üstünde */}
-              {(kullanici?.uid === ic.yukleyenUID || rol === "ogretmen") && (
                 <div className="flex justify-end mt-4">
                   <button
                     onClick={() => ozetle(ic)}
@@ -517,7 +516,6 @@ export default function SinifDetaySayfasi() {
                     📄 Özetle
                   </button>
                 </div>
-              )}
 
               {/* Yorumlar Bölümü */}
               <div className="mt-4">
