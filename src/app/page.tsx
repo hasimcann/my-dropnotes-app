@@ -1,16 +1,54 @@
 "use client";
 
-import SignIn from "@/components/SignIn"; // Giriş bileşeni
+import SignIn from "@/components/SignIn";
+import Image from "next/image";
+import { useEffect, useState } from "react";
 
 export default function Home() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8 sm:p-20 bg-gray-50 dark:bg-gray-900">
-      <h1 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-8">
-        DropNotes Uygulaması
-      </h1>
+  const [animasyonBasla, setAnimasyonBasla] = useState(false);
 
-      {/* Giriş Yap */}
-      <SignIn />
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimasyonBasla(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="relative w-full min-h-screen bg-[#f3f4f6] flex overflow-hidden">
+      {/* === Düşen ve Büyüyen Damla Logo === */}
+      <div
+        className={`absolute transition-all duration-1000 ease-out ${
+          animasyonBasla
+            ? "top-1/2 left-[8%] -translate-y-1/2 scale-[2.4]"
+            : "top-[-300px] left-[8%] scale-[2]"
+        }`}
+      >
+        <Image
+          src="/logo1.png"
+          alt="DropNotes Logo"
+          width={150}
+          height={150}
+          className="object-contain"
+        />
+      </div>
+
+      {/* === Yazılar ve Giriş Butonu === */}
+      <div className="w-full flex flex-col justify-center items-center text-center">
+        {/* Giriş Butonu */}
+        <div className="absolute top-8 right-10">
+          <SignIn />
+        </div>
+
+        {/* Açıklama */}
+        <div className="max-w-xl mt-32">
+          <h1 className="text-5xl font-extrabold text-gray-800 leading-tight mb-6">
+            DropNotes ile notlarını paylaş.
+          </h1>
+          <p className="text-lg text-gray-600">
+            Ders içeriklerini kolayca yükle, başkalarıyla paylaş ve yapay zekâ
+            ile özetle. Hızlı, sade ve etkili bir öğrenme ortamı seni bekliyor.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

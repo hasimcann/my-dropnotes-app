@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 
 const SignIn = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -60,12 +61,17 @@ const SignIn = () => {
   };
 
   const googleIleGirisYap = async () => {
+    if (loading) return;
+    setLoading(true);
+
     try {
       const sonuc = await signInWithPopup(auth, googleProvider);
       setUser(sonuc.user);
-      await kullaniciyiFirestoreaKaydet(sonuc.user); // tekrar kontrol edilir
+      await kullaniciyiFirestoreaKaydet(sonuc.user);
     } catch (error) {
       console.error("Google ile giriş hatası:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -91,7 +97,7 @@ const SignIn = () => {
           />
           <button
             onClick={cikisYap}
-            className="px-4 py-2 bg-red-500 text-white rounded-md"
+            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition"
           >
             Çıkış Yap
           </button>
@@ -99,9 +105,10 @@ const SignIn = () => {
       ) : (
         <button
           onClick={googleIleGirisYap}
-          className="px-4 py-2 bg-blue-500 text-white rounded-md"
+          disabled={loading}
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition disabled:opacity-50"
         >
-          Google ile Giriş Yap
+          {loading ? "Giriş yapılıyor..." : "Google ile Giriş Yap"}
         </button>
       )}
     </div>

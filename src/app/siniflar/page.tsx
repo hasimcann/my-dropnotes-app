@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { auth, db } from "@/config/firebaseConfig";
 import {
   signOut,
@@ -25,7 +26,7 @@ interface Sinif {
   id: string;
   ad: string;
   kod: string;
-  uyeler: string[]; // Sınıfın üyeleri
+  uyeler: string[];
 }
 
 export default function SiniflarSayfasi() {
@@ -42,7 +43,6 @@ export default function SiniflarSayfasi() {
       if (kullanici) {
         setKullanici(kullanici);
 
-        // Rolü çek
         const q = query(collection(db, "kullanicilar"), where("uid", "==", kullanici.uid));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
@@ -50,8 +50,10 @@ export default function SiniflarSayfasi() {
           setRol(veri.rol);
         }
 
-        // Kullanıcının sınıflarını çek
-        const sinifQuery = query(collection(db, "siniflar"), where("uyeler", "array-contains", kullanici.uid));
+        const sinifQuery = query(
+          collection(db, "siniflar"),
+          where("uyeler", "array-contains", kullanici.uid)
+        );
         const sinifSnapshot = await getDocs(sinifQuery);
         const siniflarListesi = sinifSnapshot.docs.map((doc) => ({
           id: doc.id,
@@ -66,7 +68,7 @@ export default function SiniflarSayfasi() {
     return () => unsubscribe();
   }, []);
 
-  const cikisYap = async () => {
+    const cikisYap = async () => {
     await signOut(auth);
     router.push("/");
   };
@@ -90,108 +92,105 @@ export default function SiniflarSayfasi() {
   };
 
   return (
-    <div className="p-8 relative min-h-screen bg-gray-100">
-      {/* Sağ Üst Kullanıcı Menüsü */}
-      <div className="absolute top-4 right-6 flex items-center space-x-4">
-        {kullanici?.photoURL && (
-          <img
-            src={kullanici.photoURL}
-            alt="Profil"
-            className="w-10 h-10 rounded-full border"
-          />
-        )}
-        <span className="font-medium">{kullanici?.displayName || "Kullanıcı"}</span>
-        <button
-          onClick={cikisYap}
-          className="bg-red-500 text-white px-4 py-2 rounded"
-        >
-          Çıkış Yap
-        </button>
-      </div>
+  <div className="p-8 min-h-screen bg-gray-100">
+    <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
+      Sınıflarınız
+    </h1>
 
-      {/* Ana İçerik */}
-      <div className="flex flex-col items-center justify-center h-full pt-20">
-        <h1 className="text-2xl font-bold mb-6">Kayıtlı Olduğunuz Sınıflar</h1>
+    {/* Sınıf kartları */}
+    {siniflar.length === 0 ? (
+      <p className="text-center text-gray-600">Herhangi bir sınıfa kayıtlı değilsiniz.</p>
+    ) : (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto mb-12">
+        {siniflar.map((sinif) => (
+          <div
+            key={sinif.id}
+            onClick={() => router.push(`/siniflar/${sinif.id}`)}
+            className="relative rounded-2xl overflow-hidden shadow-md cursor-pointer hover:shadow-lg transition-all group"
+          >
+            {/* Arka Plan Görseli */}
+            <div
+              className="h-40 bg-cover bg-center"
+              style={{ backgroundImage: "url('/arkaplan.png')" }}
+            ></div>
 
-        {siniflar.length === 0 ? (
-          <p className="mb-8 text-gray-600">Herhangi bir sınıfa kayıtlı değilsiniz.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-5xl mb-10">
-            {siniflar.map((sinif) => (
+            {/* İçerik */}
+            <div className="bg-white p-5 relative">
+              {/* Menü */}
               <div
-                key={sinif.id}
-                className="relative cursor-pointer bg-white border hover:shadow-lg hover:bg-blue-50 transition-all duration-300 p-6 rounded-xl"
+                className="absolute top-3 right-3 z-10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAcikMenu((prev) => ({ ...prev, [sinif.id]: !prev[sinif.id] }));
+                }}
               >
-                {/* Üç Nokta Menü */}
-                <div className="absolute top-2 right-2">
-                  <button
-                    onClick={() =>
-                      setAcikMenu((prev) => ({
-                        ...prev,
-                        [sinif.id]: !prev[sinif.id],
-                      }))
-                    }
-                  >
-                    ⋮
-                  </button>
-                  {acikMenu[sinif.id] && (
-                    <div className="absolute right-0 mt-2 w-32 bg-white border rounded shadow-md z-10">
-                      {rol === "ogrenci" && (
-                        <button
-                          onClick={() => siniftanAyril(sinif.id)}
-                          className="block w-full px-3 py-1 text-left text-red-600 hover:bg-gray-100 text-sm"
-                        >
-                          Sınıftan Ayrıl
-                        </button>
-                      )}
-                      {rol === "ogretmen" && (
-                        <button
-                          onClick={() => sinifiSil(sinif.id)}
-                          className="block w-full px-3 py-1 text-left text-red-600 hover:bg-gray-100 text-sm"
-                        >
-                          Sınıfı Sil
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div onClick={() => router.push(`/siniflar/${sinif.id}`)}>
-                  <h2 className="text-lg font-semibold text-blue-700">{sinif.ad}</h2>
-                  <p className="text-sm mt-2 text-gray-600">
-                    Kod: <code className="font-mono">{sinif.kod}</code>
-                  </p>
-                </div>
+                <button className="text-lg text-gray-500 hover:text-gray-800 transition">⋮</button>
+                {acikMenu[sinif.id] && (
+                  <div className="absolute right-0 mt-2 w-40 bg-white border rounded shadow z-20">
+                    {rol === "ogrenci" && (
+                      <button
+                        onClick={() => siniftanAyril(sinif.id)}
+                        className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                      >
+                        Sınıftan Ayrıl
+                      </button>
+                    )}
+                    {rol === "ogretmen" && (
+                      <button
+                        onClick={() => sinifiSil(sinif.id)}
+                        className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                      >
+                        Sınıfı Sil
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
+
+              {/* Başlık ve Kod */}
+              <h2 className="text-xl font-bold text-blue-700 group-hover:underline pr-8">
+                {sinif.ad}
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Kod:{" "}
+                <code className="bg-gray-100 text-gray-800 font-mono text-sm px-2 py-1 rounded-md">
+                  {sinif.kod}
+                </code>
+              </p>
+
+              {/* Katılımcı Sayısı */}
+              <div className="absolute bottom-3 right-5 text-sm text-gray-500">
+                👥 {sinif.uyeler?.length || 0} kişi
+              </div>
+            </div>
           </div>
-        )}
-
-        {/* Ortadaki Rol Bazlı Butonlar */}
-        <div className="flex flex-col items-center space-y-4">
-          {rol === "ogrenci" && (
-            <button
-              onClick={() => setPopupAcik(true)}
-              className="bg-green-600 text-white px-6 py-2 rounded"
-            >
-              + Sınıfa Katıl
-            </button>
-          )}
-
-          {rol === "ogretmen" && (
-            <button
-              onClick={() => setSinifPopup(true)}
-              className="bg-blue-600 text-white px-6 py-2 rounded"
-            >
-              + Sınıf Oluştur
-            </button>
-          )}
-        </div>
+        ))}
       </div>
+    )}
 
-      {/* Popup Bileşenleri */}
-      {popupAcik && <KatilPopup onClose={() => setPopupAcik(false)} />}
-      {sinifPopup && <SinifOlusturPopup onClose={() => setSinifPopup(false)} />}
+    {/* Butonlar */}
+    <div className="flex justify-center gap-4 mt-6">
+      {rol === "ogrenci" && (
+        <button
+          onClick={() => setPopupAcik(true)}
+          className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 transition"
+        >
+          + Sınıfa Katıl
+        </button>
+      )}
+      {rol === "ogretmen" && (
+        <button
+          onClick={() => setSinifPopup(true)}
+          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition"
+        >
+          + Sınıf Oluştur
+        </button>
+      )}
     </div>
-  );
+
+    {/* Popup Bileşenleri */}
+    {popupAcik && <KatilPopup onClose={() => setPopupAcik(false)} />}
+    {sinifPopup && <SinifOlusturPopup onClose={() => setSinifPopup(false)} />}
+  </div>
+);
 }
