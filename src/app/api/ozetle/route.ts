@@ -3,15 +3,26 @@ import { get } from "https";
 import mammoth from "mammoth";
 import * as cheerio from "cheerio";
 import Tesseract from "tesseract.js";
+import pdfParse from "pdf-parse";
 
-// PDF'ler için pdf-parse dinamik olarak yüklenir
+// URL'den dosya indir
+async function dosyaIndir(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    get(url, (res) => {
+      const chunks: Uint8Array[] = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+      res.on("error", reject);
+    });
+  });
+}
+
+// PDF için metin çıkarma
 async function pdfParseYap(buffer: Buffer): Promise<string> {
   try {
-    const pdfParse = eval("require")("pdf-parse");
     const parsed = await pdfParse(buffer);
     const text = parsed.text?.trim();
 
-    // Eğer metin yoksa veya yetersizse OCR kullan
     if (!text || text.length < 10) {
       console.warn("pdf-parse başarısız. OCR denenecek...");
       const {
@@ -27,19 +38,7 @@ async function pdfParseYap(buffer: Buffer): Promise<string> {
   }
 }
 
-// URL'den dosya indir
-async function dosyaIndir(url: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    get(url, (res) => {
-      const chunks: Uint8Array[] = [];
-      res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
-    });
-  });
-}
-
-// === Ana Özetleme Endpoint'i ===
+// Ana Özetleme Endpoint'i
 export async function POST(req: NextRequest) {
   try {
     const { icerik, url, mimeType } = (await req.json()) as {
@@ -50,12 +49,9 @@ export async function POST(req: NextRequest) {
 
     let metin = "";
 
-    // Sadece metin varsa doğrudan kullan
     if (icerik && icerik.length > 10) {
       metin = icerik;
-    }
-    // Dosya varsa tipi kontrol edilir
-    else if (url && mimeType) {
+    } else if (url && mimeType) {
       const buffer = await dosyaIndir(url);
 
       if (mimeType === "application/pdf") {
@@ -105,7 +101,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      // === GPT'ye Özetleme İsteği ===
+      // GPT'ye özetleme isteği
       const gptRes = await fetch(
         "https://api.openai.com/v1/chat/completions",
         {
