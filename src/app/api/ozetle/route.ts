@@ -10,7 +10,8 @@ async function dosyaIndir(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     get(url, (res) => {
       if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-        return reject(new Error(`Dosya indirilemedi. HTTP status kodu: ${res.statusCode}`));
+        reject(new Error(`Dosya indirilemedi. HTTP status kodu: ${res.statusCode}`));
+        return;
       }
       const chunks: Uint8Array[] = [];
       res.on("data", (chunk) => chunks.push(chunk));
@@ -60,7 +61,13 @@ export async function POST(req: NextRequest) {
         buffer = await dosyaIndir(url);
       } catch (indirmeHatasi) {
         return NextResponse.json(
-          { error: "Dosya indirilemedi: " + (indirmeHatasi instanceof Error ? indirmeHatasi.message : "Bilinmeyen hata") },
+          {
+            error:
+              "Dosya indirilemedi: " +
+              (indirmeHatasi instanceof Error
+                ? indirmeHatasi.message
+                : "Bilinmeyen hata"),
+          },
           { status: 400 }
         );
       }
@@ -112,7 +119,6 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      // GPT'ye özetleme isteği
       const gptRes = await fetch(
         "https://api.openai.com/v1/chat/completions",
         {
@@ -149,22 +155,28 @@ export async function POST(req: NextRequest) {
 
       const json = await gptRes.json();
 
-      const ozet =
-        json.choices?.[0]?.message?.content || "Özet oluşturulamadı.";
+      const ozet = json.choices?.[0]?.message?.content || "Özet oluşturulamadı.";
 
       return NextResponse.json({ ozet });
     } catch (err) {
       console.error("Sunucu hatası:", err);
 
       return NextResponse.json(
-        { error: "Sunucu hatası: " + (err instanceof Error ? err.message : "Bilinmeyen hata") },
+        {
+          error:
+            "Sunucu hatası: " +
+            (err instanceof Error ? err.message : "Bilinmeyen hata"),
+        },
         { status: 500 }
       );
     }
   } catch (err) {
     console.error("Genel hata:", err);
     return NextResponse.json(
-      { error: "Genel hata: " + (err instanceof Error ? err.message : "Bilinmeyen hata") },
+      {
+        error:
+          "Genel hata: " + (err instanceof Error ? err.message : "Bilinmeyen hata"),
+      },
       { status: 500 }
     );
   }
