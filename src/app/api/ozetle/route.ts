@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { get } from "https";
 import mammoth from "mammoth";
 import * as cheerio from "cheerio";
-import Tesseract from "tesseract.js";
-import pdfParse from "pdf-parse";
 
-// URL'den dosya indir (HTTPS)
+// URL'den dosya indir (HTTPS) -> Buffer olarak döner
 async function dosyaIndir(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     get(url, (res) => {
@@ -21,28 +19,33 @@ async function dosyaIndir(url: string): Promise<Buffer> {
   });
 }
 
-// PDF için metin çıkarma
+// Dinamik PDF çözümleme (pdf-parse + gerekirse OCR)
 async function pdfParseYap(buffer: Buffer): Promise<string> {
   try {
+    const pdfParse = (await import("pdf-parse")).default;
     const parsed = await pdfParse(buffer);
     const text = parsed.text?.trim();
 
     if (!text || text.length < 10) {
-      console.warn("pdf-parse başarısız. OCR denenecek...");
-      const {
-        data: { text: ocrText },
-      } = await Tesseract.recognize(buffer, "tur");
+      const Tesseract = await import("tesseract.js");
+      const { data: { text: ocrText } } = await Tesseract.recognize(buffer, "tur");
       return ocrText.trim();
     }
 
     return text;
   } catch (err) {
-    console.warn("PDF çözümleme başarısız:", err);
+    console.warn("PDF çözümleme hatası:", err);
     return "";
   }
 }
 
-// Ana Özetleme Endpoint'i
+// Dinamik OCR fonksiyonu
+async function ocrYap(buffer: Buffer): Promise<string> {
+  const Tesseract = await import("tesseract.js");
+  const { data: { text } } = await Tesseract.recognize(buffer, "tur");
+  return text.trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { icerik, url, mimeType } = (await req.json()) as {
@@ -64,9 +67,7 @@ export async function POST(req: NextRequest) {
           {
             error:
               "Dosya indirilemedi: " +
-              (indirmeHatasi instanceof Error
-                ? indirmeHatasi.message
-                : "Bilinmeyen hata"),
+              (indirmeHatasi instanceof Error ? indirmeHatasi.message : "Bilinmeyen hata"),
           },
           { status: 400 }
         );
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ) {
         const result = await mammoth.extractRawText({ buffer });
-        metin = result.value;
+        metin = result.value.trim();
       } else if (mimeType.startsWith("text/html")) {
         const html = buffer.toString("utf-8");
         const $ = cheerio.load(html);
@@ -94,10 +95,7 @@ export async function POST(req: NextRequest) {
       } else if (mimeType.startsWith("text/")) {
         metin = buffer.toString("utf-8");
       } else if (mimeType.startsWith("image/")) {
-        const {
-          data: { text },
-        } = await Tesseract.recognize(buffer, "tur");
-        metin = text.trim();
+        metin = await ocrYap(buffer);
       } else {
         return NextResponse.json(
           { error: "Desteklenmeyen dosya türü." },
@@ -119,31 +117,28 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const gptRes = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "Aşağıdaki içeriği açıklayıcı ve detaylı şekilde özetle. Konunun kapsamını, ana fikirleri ve önemli detayları açıkla. Gerekirse paragraflarla veya madde madde ifade et.",
-              },
-              {
-                role: "user",
-                content: metin.slice(0, 12000),
-              },
-            ],
-            temperature: 0.3,
-          }),
-        }
-      );
+      const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-3.5-turbo",
+          messages: [
+            {
+              role: "system",
+              content:
+                "Aşağıdaki içeriği açıklayıcı ve detaylı şekilde özetle. Konunun kapsamını, ana fikirleri ve önemli detayları açıkla. Gerekirse paragraflarla veya madde madde ifade et.",
+            },
+            {
+              role: "user",
+              content: metin.slice(0, 12000),
+            },
+          ],
+          temperature: 0.3,
+        }),
+      });
 
       if (!gptRes.ok) {
         const hata = await gptRes.text();
@@ -154,18 +149,15 @@ export async function POST(req: NextRequest) {
       }
 
       const json = await gptRes.json();
-
       const ozet = json.choices?.[0]?.message?.content || "Özet oluşturulamadı.";
 
       return NextResponse.json({ ozet });
     } catch (err) {
       console.error("Sunucu hatası:", err);
-
       return NextResponse.json(
         {
           error:
-            "Sunucu hatası: " +
-            (err instanceof Error ? err.message : "Bilinmeyen hata"),
+            "Sunucu hatası: " + (err instanceof Error ? err.message : "Bilinmeyen hata"),
         },
         { status: 500 }
       );
