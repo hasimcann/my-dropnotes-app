@@ -5,15 +5,18 @@ import * as cheerio from "cheerio";
 import Tesseract from "tesseract.js";
 import pdfParse from "pdf-parse";
 
-// URL'den dosya indir
+// URL'den dosya indir (HTTPS)
 async function dosyaIndir(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     get(url, (res) => {
+      if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+        return reject(new Error(`Dosya indirilemedi. HTTP status kodu: ${res.statusCode}`));
+      }
       const chunks: Uint8Array[] = [];
       res.on("data", (chunk) => chunks.push(chunk));
       res.on("end", () => resolve(Buffer.concat(chunks)));
       res.on("error", reject);
-    });
+    }).on("error", reject);
   });
 }
 
@@ -32,7 +35,7 @@ async function pdfParseYap(buffer: Buffer): Promise<string> {
     }
 
     return text;
-  } catch (err: unknown) {
+  } catch (err) {
     console.warn("PDF çözümleme başarısız:", err);
     return "";
   }
@@ -52,7 +55,15 @@ export async function POST(req: NextRequest) {
     if (icerik && icerik.length > 10) {
       metin = icerik;
     } else if (url && mimeType) {
-      const buffer = await dosyaIndir(url);
+      let buffer: Buffer;
+      try {
+        buffer = await dosyaIndir(url);
+      } catch (indirmeHatasi) {
+        return NextResponse.json(
+          { error: "Dosya indirilemedi: " + (indirmeHatasi instanceof Error ? indirmeHatasi.message : "Bilinmeyen hata") },
+          { status: 400 }
+        );
+      }
 
       if (mimeType === "application/pdf") {
         metin = await pdfParseYap(buffer);
@@ -142,21 +153,18 @@ export async function POST(req: NextRequest) {
         json.choices?.[0]?.message?.content || "Özet oluşturulamadı.";
 
       return NextResponse.json({ ozet });
-    } catch (err: unknown) {
+    } catch (err) {
       console.error("Sunucu hatası:", err);
 
-      const message = err instanceof Error ? err.message : "Bilinmeyen hata.";
-
       return NextResponse.json(
-        { error: "Sunucu hatası: " + message },
+        { error: "Sunucu hatası: " + (err instanceof Error ? err.message : "Bilinmeyen hata") },
         { status: 500 }
       );
     }
-  } catch (err: unknown) {
+  } catch (err) {
     console.error("Genel hata:", err);
-    const message = err instanceof Error ? err.message : "Bilinmeyen hata.";
     return NextResponse.json(
-      { error: "Genel hata: " + message },
+      { error: "Genel hata: " + (err instanceof Error ? err.message : "Bilinmeyen hata") },
       { status: 500 }
     );
   }
