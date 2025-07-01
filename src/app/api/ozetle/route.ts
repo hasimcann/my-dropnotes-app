@@ -14,12 +14,14 @@ async function pdfParseYap(buffer: Buffer): Promise<string> {
     // Eğer metin yoksa veya yetersizse OCR kullan
     if (!text || text.length < 10) {
       console.warn("pdf-parse başarısız. OCR denenecek...");
-      const { data: { text: ocrText } } = await Tesseract.recognize(buffer, "tur");
+      const {
+        data: { text: ocrText },
+      } = await Tesseract.recognize(buffer, "tur");
       return ocrText.trim();
     }
 
     return text;
-  } catch (err) {
+  } catch (err: unknown) {
     console.warn("PDF çözümleme başarısız:", err);
     return "";
   }
@@ -40,7 +42,12 @@ async function dosyaIndir(url: string): Promise<Buffer> {
 // === Ana Özetleme Endpoint'i ===
 export async function POST(req: NextRequest) {
   try {
-    const { icerik, url, mimeType } = await req.json();
+    const { icerik, url, mimeType } = (await req.json()) as {
+      icerik?: string;
+      url?: string;
+      mimeType?: string;
+    };
+
     let metin = "";
 
     // Sadece metin varsa doğrudan kullan
@@ -61,7 +68,8 @@ export async function POST(req: NextRequest) {
           );
         }
       } else if (
-        mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        mimeType ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ) {
         const result = await mammoth.extractRawText({ buffer });
         metin = result.value;
@@ -72,55 +80,87 @@ export async function POST(req: NextRequest) {
       } else if (mimeType.startsWith("text/")) {
         metin = buffer.toString("utf-8");
       } else if (mimeType.startsWith("image/")) {
-        const { data: { text } } = await Tesseract.recognize(buffer, "tur");
+        const {
+          data: { text },
+        } = await Tesseract.recognize(buffer, "tur");
         metin = text.trim();
       } else {
-        return NextResponse.json({ error: "Desteklenmeyen dosya türü." }, { status: 415 });
+        return NextResponse.json(
+          { error: "Desteklenmeyen dosya türü." },
+          { status: 415 }
+        );
       }
     } else {
-      return NextResponse.json({ error: "İçerik veya dosya eksik." }, { status: 400 });
+      return NextResponse.json(
+        { error: "İçerik veya dosya eksik." },
+        { status: 400 }
+      );
     }
 
     if (!metin || metin.length < 10) {
-      return NextResponse.json({ error: "Metin çıkarılamadı veya çok kısa." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Metin çıkarılamadı veya çok kısa." },
+        { status: 400 }
+      );
     }
 
-    // === GPT'ye Özetleme İsteği ===
-    const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Aşağıdaki içeriği açıklayıcı ve detaylı şekilde özetle. Konunun kapsamını, ana fikirleri ve önemli detayları açıkla. Gerekirse paragraflarla veya madde madde ifade et.",
+    try {
+      // === GPT'ye Özetleme İsteği ===
+      const gptRes = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
-          {
-            role: "user",
-            content: metin.slice(0, 12000),
-          },
-        ],
-        temperature: 0.3,
-      }),
-    });
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Aşağıdaki içeriği açıklayıcı ve detaylı şekilde özetle. Konunun kapsamını, ana fikirleri ve önemli detayları açıkla. Gerekirse paragraflarla veya madde madde ifade et.",
+              },
+              {
+                role: "user",
+                content: metin.slice(0, 12000),
+              },
+            ],
+            temperature: 0.3,
+          }),
+        }
+      );
 
-    if (!gptRes.ok) {
-      const hata = await gptRes.text();
-      return NextResponse.json({ error: "GPT yanıtı alınamadı: " + hata }, { status: 500 });
+      if (!gptRes.ok) {
+        const hata = await gptRes.text();
+        return NextResponse.json(
+          { error: "GPT yanıtı alınamadı: " + hata },
+          { status: 500 }
+        );
+      }
+
+      const json = await gptRes.json();
+
+      const ozet =
+        json.choices?.[0]?.message?.content || "Özet oluşturulamadı.";
+
+      return NextResponse.json({ ozet });
+    } catch (err: unknown) {
+      console.error("Sunucu hatası:", err);
+
+      const message = err instanceof Error ? err.message : "Bilinmeyen hata.";
+
+      return NextResponse.json(
+        { error: "Sunucu hatası: " + message },
+        { status: 500 }
+      );
     }
-
-    const json = await gptRes.json();
-    const ozet = json.choices?.[0]?.message?.content || "Özet oluşturulamadı.";
-    return NextResponse.json({ ozet });
-  } catch (err: any) {
-    console.error("Sunucu hatası:", err);
+  } catch (err: unknown) {
+    console.error("Genel hata:", err);
+    const message = err instanceof Error ? err.message : "Bilinmeyen hata.";
     return NextResponse.json(
-      { error: "Sunucu hatası: " + (err.message || "Bilinmeyen hata.") },
+      { error: "Genel hata: " + message },
       { status: 500 }
     );
   }

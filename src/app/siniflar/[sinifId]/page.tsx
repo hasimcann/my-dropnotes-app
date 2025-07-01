@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import HataMesaji from "@/components/HataMesaji";
 import Image from "next/image";
@@ -35,6 +35,14 @@ interface Icerik {
   tarih: Timestamp;
 }
 
+interface KullaniciBilgileri {
+  ad: string;
+  email: string;
+  rol: string;
+  foto?: string;
+  // diğer alanlar varsa ekleyebilirsin
+}
+
 interface Yorum {
   id: string;
   yazanUID: string;
@@ -48,6 +56,12 @@ interface Uye {
   ad: string;
   foto?: string;
   rol: string;
+}
+
+interface OzetleBody {
+  icerik?: string;
+  url?: string;
+  mimeType?: string;
 }
 
 function OzetModal({
@@ -112,7 +126,103 @@ export default function SinifDetaySayfasi() {
   const [hataMesaji, setHataMesaji] = useState("");
   const [aktifSekme, setAktifSekme] = useState<"icerikler" | "kisiler">("icerikler");
   const [uyeler, setUyeler] = useState<Uye[]>([]);
-  const [kullaniciBilgileri, setKullaniciBilgileri] = useState<{ [key: string]: any }>({});
+  const [kullaniciBilgileri, setKullaniciBilgileri] = useState<Record<string, KullaniciBilgileri>>({});
+
+  // Kullanıcı rolünü getir
+  const getKullaniciRol = useCallback(async (uid: string) => {
+    try {
+      const q = query(collection(db, "kullanicilar"), where("uid", "==", uid));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        setRol(snap.docs[0].data().rol);
+      }
+    } catch (error) {
+      console.error("Kullanıcı rolü alınamadı:", error);
+    }
+  }, []);
+
+  // Sınıf verilerini getir
+  const sinifVerileriniGetir = useCallback(async () => {
+    if (!sinifId) return;
+    try {
+      const ref = doc(db, "siniflar", sinifId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
+        setSinifAdi(data.ad);
+        setSinifKodu(data.kod);
+      }
+    } catch (error) {
+      console.error("Sınıf verileri alınamadı:", error);
+    }
+  }, [sinifId]);
+
+  // Sınıf üyelerini getir
+  const sinifUyeleriGetir = useCallback(async () => {
+    if (!sinifId) return;
+    try {
+      const sinifRef = doc(db, "siniflar", sinifId);
+      const sinifSnap = await getDoc(sinifRef);
+      if (!sinifSnap.exists()) return;
+
+      const uyeUidList: string[] = sinifSnap.data().uyeler || [];
+      if (uyeUidList.length === 0) return;
+
+      const uyeQuery = query(collection(db, "kullanicilar"), where("uid", "in", uyeUidList));
+      const uyeSnap = await getDocs(uyeQuery);
+
+      const liste: Uye[] = uyeSnap.docs.map((d) => ({
+        uid: d.data().uid,
+        ad: d.data().ad || d.data().email,
+        foto: d.data().foto,
+        rol: d.data().rol,
+      }));
+
+      const sirali = liste.sort((a, b) =>
+        a.rol === "ogretmen" && b.rol !== "ogretmen" ? -1 :
+        a.rol !== "ogretmen" && b.rol === "ogretmen" ? 1 : 0
+      );
+
+      setUyeler(sirali);
+    } catch (error) {
+      console.error("Sınıf üyeleri alınamadı:", error);
+    }
+  }, [sinifId]);
+
+  // Yorumları getir
+  const yorumlariGetir = useCallback(async (icerikId: string) => {
+    if (!sinifId) return;
+    try {
+      const ref = collection(db, "siniflar", sinifId, "icerikler", icerikId, "yorumlar");
+      const snap = await getDocs(ref);
+      setYorumlar((prev) => ({
+        ...prev,
+        [icerikId]: snap.docs.map((d) => ({ id: d.id, ...d.data() } as Yorum)),
+      }));
+    } catch (error) {
+      console.error("Yorumlar alınamadı:", error);
+    }
+  }, [sinifId]);
+
+  // İçerikleri getir
+  const icerikleriGetir = useCallback(async () => {
+    if (!sinifId) return;
+    try {
+      const ref = collection(db, "siniflar", sinifId, "icerikler");
+      const snap = await getDocs(ref);
+
+      const list: Icerik[] = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Icerik))
+        .sort((a, b) => b.tarih.toMillis() - a.tarih.toMillis());
+
+      setIcerikler(list);
+
+      // Yorumları da getir
+      await Promise.all(snap.docs.map((d) => yorumlariGetir(d.id)));
+    } catch (error) {
+      console.error("İçerikler alınamadı:", error);
+    }
+  }, [sinifId, yorumlariGetir]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -122,126 +232,101 @@ export default function SinifDetaySayfasi() {
         await sinifVerileriniGetir();
         await icerikleriGetir();
         await sinifUyeleriGetir();
+      } else {
+        setKullanici(null);
+        setRol(null);
+        setSinifAdi("");
+        setSinifKodu("");
+        setIcerikler([]);
+        setUyeler([]);
       }
     });
+
     return () => unsubscribe();
-  }, []);
-
-    const getKullaniciRol = async (uid: string) => {
-    const q = query(collection(db, "kullanicilar"), where("uid", "==", uid));
-    const snap = await getDocs(q);
-    if (!snap.empty) setRol(snap.docs[0].data().rol);
-  };
-
-  const sinifVerileriniGetir = async () => {
-    const ref = doc(db, "siniflar", sinifId);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      setSinifAdi(snap.data().ad);
-      setSinifKodu(snap.data().kod);
-    }
-  };
-
-  const sinifUyeleriGetir = async () => {
-    const sinifRef = doc(db, "siniflar", sinifId);
-    const sinifSnap = await getDoc(sinifRef);
-    if (!sinifSnap.exists()) return;
-    const uyeUidList: string[] = sinifSnap.data().uyeler || [];
-    if (uyeUidList.length === 0) return;
-
-    const uyeQuery = query(collection(db, "kullanicilar"), where("uid", "in", uyeUidList));
-    const uyeSnap = await getDocs(uyeQuery);
-    const liste: Uye[] = uyeSnap.docs.map((d) => ({
-      uid: d.data().uid,
-      ad: d.data().ad || d.data().email,
-      foto: d.data().foto,
-      rol: d.data().rol,
-    }));
-    const sirali = [...liste].sort((a, b) => a.rol === "ogretmen" ? -1 : 1);
-    setUyeler(sirali);
-  };
-
-    const icerikleriGetir = async () => {
-    const ref = collection(db, "siniflar", sinifId, "icerikler");
-    const snap = await getDocs(ref);
-    const list = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() } as Icerik))
-      .sort((a, b) => b.tarih.toMillis() - a.tarih.toMillis());
-    setIcerikler(list);
-
-    for (const d of snap.docs) {
-      await yorumlariGetir(d.id);
-    }
-  };
-
-  const yorumlariGetir = async (icerikId: string) => {
-    const ref = collection(db, "siniflar", sinifId, "icerikler", icerikId, "yorumlar");
-    const snap = await getDocs(ref);
-    setYorumlar((p) => ({
-      ...p,
-      [icerikId]: snap.docs.map((d) => ({ id: d.id, ...d.data() } as Yorum)),
-    }));
-  };
+  }, [getKullaniciRol, sinifVerileriniGetir, icerikleriGetir, sinifUyeleriGetir]);
 
   const yorumEkle = async (icerikId: string) => {
     if (!kullanici || !yeniYorum[icerikId]) return;
-    await addDoc(collection(db, "siniflar", sinifId, "icerikler", icerikId, "yorumlar"), {
-      yazanUID: kullanici.uid,
-      yazanAd: kullanici.displayName || kullanici.email,
-      metin: yeniYorum[icerikId],
-      tarih: Timestamp.now(),
-    });
-    setYeniYorum((p) => ({ ...p, [icerikId]: "" }));
-    await yorumlariGetir(icerikId);
+    try {
+      await addDoc(collection(db, "siniflar", sinifId, "icerikler", icerikId, "yorumlar"), {
+        yazanUID: kullanici.uid,
+        yazanAd: kullanici.displayName || kullanici.email || "Bilinmeyen",
+        metin: yeniYorum[icerikId],
+        tarih: Timestamp.now(),
+      });
+      setYeniYorum((p) => ({ ...p, [icerikId]: "" }));
+      await yorumlariGetir(icerikId);
+    } catch (error) {
+      console.error("Yorum eklenemedi:", error);
+      setHataMesaji("Yorum eklenirken hata oluştu.");
+    }
   };
 
   const icerikSil = async (icerik: Icerik) => {
     if (!kullanici) return;
     if (kullanici.uid !== icerik.yukleyenUID && rol !== "ogretmen") return;
-    await deleteDoc(doc(db, "siniflar", sinifId, "icerikler", icerik.id));
-    await icerikleriGetir();
+    try {
+      await deleteDoc(doc(db, "siniflar", sinifId, "icerikler", icerik.id));
+      await icerikleriGetir();
+    } catch (error) {
+      console.error("İçerik silinemedi:", error);
+      setHataMesaji("İçerik silinirken hata oluştu.");
+    }
   };
 
   const yorumSil = async (icerikId: string, yorum: Yorum) => {
     if (!kullanici) return;
     if (kullanici.uid !== yorum.yazanUID && rol !== "ogretmen") return;
-    await deleteDoc(doc(db, "siniflar", sinifId, "icerikler", icerikId, "yorumlar", yorum.id));
-    await yorumlariGetir(icerikId);
+    try {
+      await deleteDoc(doc(db, "siniflar", sinifId, "icerikler", icerikId, "yorumlar", yorum.id));
+      await yorumlariGetir(icerikId);
+    } catch (error) {
+      console.error("Yorum silinemedi:", error);
+      setHataMesaji("Yorum silinirken hata oluştu.");
+    }
   };
 
-    useEffect(() => {
+  useEffect(() => {
     const getirKullaniciBilgileri = async () => {
-      const yeniVeriler: { [key: string]: any } = {};
+      const yeniVeriler: Record<string, KullaniciBilgileri> = {};
+  
       await Promise.all(
         icerikler.map(async (icerik) => {
           const uid = icerik.yukleyenUID;
           if (!uid || kullaniciBilgileri[uid]) return;
-
+  
           try {
             const ref = doc(db, "kullanicilar", uid);
             const snap = await getDoc(ref);
             if (snap.exists()) {
-              yeniVeriler[uid] = snap.data();
+              const data = snap.data();
+              if (
+                data &&
+                typeof data.ad === "string" &&
+                typeof data.email === "string" &&
+                typeof data.rol === "string"
+              ) {
+                yeniVeriler[uid] = data as KullaniciBilgileri;
+              }
             }
           } catch (e) {
             console.error("Kullanıcı verisi alınırken hata:", e);
           }
         })
       );
+  
       setKullaniciBilgileri((prev) => ({ ...prev, ...yeniVeriler }));
     };
-
-    if (icerikler.length > 0) {
-      getirKullaniciBilgileri();
-    }
-  }, [icerikler]);
+  
+    getirKullaniciBilgileri();
+  }, [icerikler, kullaniciBilgileri]);
 
   const ozetle = async (icerik: Icerik) => {
     setOzetModalAcik(true);
     setOzetYukleniyor(true);
     setOzetMetni("");
-
-    const body: any = {};
+  
+    const body: OzetleBody = {};
     if (icerik.mesaj) body.icerik = icerik.mesaj;
     else if (icerik.dosyaURL && icerik.dosyaTipi) {
       body.url = icerik.dosyaURL + "&alt=media";
@@ -453,37 +538,45 @@ export default function SinifDetaySayfasi() {
                 </div>
               )}
 
-              {/* Profil Fotoğrafı + Ad + Tarih */}
-              <div className="flex items-center gap-3 mb-3">
-                {kullaniciBilgileri[ic.yukleyenUID]?.foto ? (
-                  <Image
-                    src={kullaniciBilgileri[ic.yukleyenUID].foto}
-                    alt="Profil"
-                    width={40}
-                    height={40}
-                    className="rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-gray-300" />
-                )}
-                <div className="flex flex-col">
-                  <span className="font-semibold text-gray-800">
-                    {kullaniciBilgileri[ic.yukleyenUID]?.ad || ic.yukleyenAd || "Kullanıcı"}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {ic.tarih.toDate().toLocaleString("tr-TR")}
-                  </span>
-                </div>
-              </div>
+             {/* Profil Fotoğrafı + Ad + Tarih */}
+<div className="flex items-center gap-3 mb-3">
+  {typeof kullaniciBilgileri[ic.yukleyenUID]?.foto === "string" && kullaniciBilgileri[ic.yukleyenUID]?.foto ? (
+    <Image
+      src={kullaniciBilgileri[ic.yukleyenUID]!.foto!} // "!" ile kesin var diyoruz
+      alt="Profil"
+      width={40}
+      height={40}
+      className="rounded-full object-cover"
+    />
+  ) : (
+    <div className="w-10 h-10 rounded-full bg-gray-300" />
+  )}
+  <div className="flex flex-col">
+    <span className="font-semibold text-gray-800">
+      {kullaniciBilgileri[ic.yukleyenUID]?.ad || ic.yukleyenAd || "Kullanıcı"}
+    </span>
+    <span className="text-sm text-gray-500">
+      {ic.tarih.toDate().toLocaleString("tr-TR")}
+    </span>
+  </div>
+</div>
 
               {/* Mesaj veya Dosya */}
           {ic.mesaj && <p className="mb-2">{ic.mesaj}</p>}
 
-                  {ic.dosyaURL && ic.dosyaTipi?.startsWith("image") && (
-              <div className="flex justify-center mb-2">
-            <img src={ic.dosyaURL} alt="Dosya" className="rounded max-w-full" />
-              </div>
-              )}
+          {ic.dosyaURL && ic.dosyaTipi?.startsWith("image") && (
+  <div className="flex justify-center mb-2 relative w-full" style={{height: "auto", minHeight: "200px"}}>
+    <Image
+      src={ic.dosyaURL}
+      alt="Dosya"
+      className="rounded"
+      fill
+      style={{ objectFit: "contain" }}
+      sizes="(max-width: 768px) 100vw, 50vw"
+      priority={false}
+    />
+  </div>
+)}
 
                 {ic.dosyaURL && ic.dosyaTipi?.startsWith("video") && (
               <div className="flex justify-center mb-2">

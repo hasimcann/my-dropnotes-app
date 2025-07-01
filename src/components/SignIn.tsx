@@ -7,14 +7,49 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import { auth, googleProvider, db } from "@/config/firebaseConfig";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 const SignIn = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // Kullanıcıyı Firestore'a kaydetme fonksiyonu, useCallback ile sarmalandı
+  const kullaniciyiFirestoreaKaydet = useCallback(
+    async (user: User) => {
+      try {
+        const userRef = doc(db, "kullanicilar", user.uid);
+        const docSnap = await getDoc(userRef);
+
+        if (!docSnap.exists()) {
+          // Yeni kullanıcı: Firestore'a kaydet ve rol seçimine yönlendir
+          await setDoc(userRef, {
+            uid: user.uid,
+            ad: user.displayName ?? "İsimsiz",
+            eposta: user.email ?? "Bilinmiyor",
+            foto: user.photoURL ?? "",
+            kayitTarihi: new Date().toISOString(),
+            rol: "", // Rol henüz belirlenmedi
+          });
+          console.log("✅ Yeni kullanıcı Firestore'a kaydedildi.");
+          router.push("/rol-sec");
+        } else {
+          const veri = docSnap.data();
+          if (!veri.rol) {
+            router.push("/rol-sec");
+          } else {
+            router.push("/siniflar");
+          }
+        }
+      } catch (error) {
+        console.error("❌ Firestore kayıt hatası:", error);
+      }
+    },
+    [router]
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -27,38 +62,7 @@ const SignIn = () => {
     });
 
     return () => unsubscribe();
-  }, []);
-
-  // ✅ Kullanıcıyı Firestore'a kaydet ve yönlendir
-  const kullaniciyiFirestoreaKaydet = async (user: User) => {
-    try {
-      const userRef = doc(db, "kullanicilar", user.uid);
-      const docSnap = await getDoc(userRef);
-
-      if (!docSnap.exists()) {
-        // Yeni kullanıcı: Firestore'a kaydet ve rol seçimine yönlendir
-        await setDoc(userRef, {
-          uid: user.uid,
-          ad: user.displayName ?? "İsimsiz",
-          eposta: user.email ?? "Bilinmiyor",
-          foto: user.photoURL ?? "",
-          kayitTarihi: new Date().toISOString(),
-          rol: "", // 👈 Rol henüz belirlenmedi
-        });
-        console.log("✅ Yeni kullanıcı Firestore'a kaydedildi.");
-        router.push("/rol-sec");
-      } else {
-        const veri = docSnap.data();
-        if (!veri.rol) {
-          router.push("/rol-sec");
-        } else {
-          router.push("/siniflar");
-        }
-      }
-    } catch (error) {
-      console.error("❌ Firestore kayıt hatası:", error);
-    }
-  };
+  }, [kullaniciyiFirestoreaKaydet]); // bağımlılık olarak fonksiyon eklendi
 
   const googleIleGirisYap = async () => {
     if (loading) return;
@@ -90,10 +94,13 @@ const SignIn = () => {
       {user ? (
         <div className="flex flex-col items-center gap-2">
           <p>Merhaba, {user.displayName}</p>
-          <img
-            src={user.photoURL ?? ""}
+          <Image
+            src={user.photoURL ?? "/default-profile.png"}
             alt="Profil Fotoğrafı"
-            className="w-16 h-16 rounded-full"
+            width={64}
+            height={64}
+            className="rounded-full"
+            priority={true}
           />
           <button
             onClick={cikisYap}
